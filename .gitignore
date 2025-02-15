@@ -1,2 +1,19 @@
 .env
 *env*
+
+# Uploaded files
+/uploads/
+uploads/
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.svg
+*.mp3
+*.mp4
+*.pdf
+
+# Temporary files
+*.tmp
+.DS_Store
+Thumbs.db

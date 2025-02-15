@@ -44,3 +44,11 @@ node_modules/
 .next/
 build/
 dist/
+*DS_Store* 
+*.jpeg
+*.jpg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.ico
