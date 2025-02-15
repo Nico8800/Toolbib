@@ -114,13 +114,15 @@ class ImageUploadResponse(BaseModel):
 secretary = Mistral(api_key=os.getenv("MISTRAL_API_KEY"))
 
 def call_secretary(request:str, image:str = None):
-    image_part = f". Image: {image}" if hasattr(request, 'image') and image else ""
+    image_part = f". Image: {image}" if image else ""
+    user_input = f"{PROMPT_SYSTEM}{request}{image_part}"
+    print(user_input)
     chat_response = secretary.chat.complete(
     model = MODEL_NAME,
     messages = [
             {
                 "role": "user",
-                "content": f"{PROMPT_SYSTEM}{request}{image_part}",
+                "content": user_input,
             },
         ],
     response_format={
