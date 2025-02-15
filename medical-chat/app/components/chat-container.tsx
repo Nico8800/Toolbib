@@ -65,10 +65,23 @@ export default function ChatContainer() {
     setMessages((prev) => [...prev, newMessage])
     setInput("")
 
-    // TODO: In the real implementation, you would:
-    // 1. Send both the user's query and sourceUrls to your backend
-    // 2. Have the backend fetch and analyze content from these URLs
-    // 3. Return a summarized response with relevant information
+    // TODO: AI Agent Integration
+    // 1. Make API call to AI agent endpoint with:
+    //    - User message
+    //    - Source URLs for context
+    //    - Chat history for context
+    // 2. AI agent will:
+    //    - Analyze the query
+    //    - Select appropriate medical models/tools
+    //    - Generate response with citations
+    //    - Return suggested tools if relevant
+    // 3. Response structure should include:
+    //    {
+    //      content: string,
+    //      tools?: Tool[],  // If analysis suggests specific tools
+    //      sources?: Source[],  // Citations from provided URLs
+    //      suggestedQueries?: string[]  // Follow-up questions
+    //    }
     
     setTimeout(() => {
       let botResponse: Message
@@ -159,7 +172,19 @@ export default function ChatContainer() {
       formData.append('file', file)
       formData.append('model', selectedTool?.name || '')
 
-      // TODO: Replace with your actual API endpoint
+      // TODO: AI Model Integration
+      // 1. Send file to specialized medical AI model endpoint
+      // 2. Model selection based on file type and selectedTool
+      // 3. Expected response:
+      //    {
+      //      prediction: string,
+      //      confidence: number,
+      //      visualizations?: string[],  // Base64 encoded images
+      //      recommendations?: string[],
+      //      medicalMetrics?: Record<string, number>
+      //    }
+
+      // Replace this with actual API endpoint
       const response = await fetch('/api/analyze', {
         method: 'POST',
         body: formData,
@@ -274,15 +299,15 @@ export default function ChatContainer() {
             priority
           />
           <h1 className="text-3xl font-bold bg-gradient-to-r from-primary/90 to-primary bg-clip-text text-transparent">
-            TOOL-BIB
+            Tool-Bib
           </h1>
         </div>
-        <p className="text-sm text-gray-600 max-w-md mx-auto">
+        <p className="text-base italic text-gray-600 max-w-md mx-auto">
           Access the best open-source models to help you during consultations
         </p>
       </div>
       <div className="flex gap-4">
-        <Card className="h-[700px] flex-1 flex flex-col bg-white shadow-lg rounded-xl">
+        <Card className="h-[600px] flex-1 flex flex-col bg-white shadow-lg rounded-xl">
           <CardContent className="flex-1 overflow-y-auto p-6 space-y-6">
             {messages.map((message) => (
               <div 
@@ -424,7 +449,7 @@ export default function ChatContainer() {
             )}
           </CardFooter>
         </Card>
-        <Card className="w-80 h-[700px] bg-white shadow-lg rounded-xl flex flex-col">
+        <Card className="w-80 h-[600px] bg-white shadow-lg rounded-xl flex flex-col">
           <CardHeader className="border-b p-4">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-lg">My Trusted Sources</h3>
@@ -505,4 +530,3 @@ export default function ChatContainer() {
     </div>
   )
 }
-
