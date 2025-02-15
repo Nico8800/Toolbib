@@ -3,3 +3,4 @@ uvicorn
 smolagents[litellm] 
 python-multipart
 gradio_client
+mistralai

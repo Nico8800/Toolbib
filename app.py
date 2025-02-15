@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
 from typing import Optional, Literal
 import uvicorn
@@ -8,16 +8,37 @@ from mistralai import Mistral
 import os
 import json
 from dotenv import load_dotenv
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import base64
+from pathlib import Path
+import uuid
 load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Create upload directory if it doesn't exist
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
+
 app = FastAPI(
     title="Pneumonia Detection API",
     description="API for pneumonia detection using chest X-ray images",
     version="1.0.0"
+)
+
+# Mount static files directory
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # Add your frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 MODEL_NAME = "mistral-large-latest"
@@ -87,6 +108,9 @@ class ChatRequest(BaseModel):
     message: str
     image: Optional[str] = None
 
+class ImageUploadResponse(BaseModel):
+    url: str
+
 secretary = Mistral(api_key=os.getenv("MISTRAL_API_KEY"))
 
 def call_secretary(request:str, image:str = None):
@@ -112,15 +136,38 @@ agent = CodeAgent(
     model=model,
 )
 
+@app.post("/upload")
+async def upload_image(image_data: dict):
+    try:
+        # Get base64 image data
+        base64_image = image_data.get("image")
+        if not base64_image:
+            raise HTTPException(status_code=400, detail="No image data provided")
+
+        # Generate unique filename
+        file_extension = "jpg"  # You can add logic to determine the correct extension
+        filename = f"{uuid.uuid4()}.{file_extension}"
+        file_path = UPLOAD_DIR / filename
+
+        # Decode and save the image
+        image_bytes = base64.b64decode(base64_image)
+        with open(file_path, "wb") as f:
+            f.write(image_bytes)
+
+        # Return the URL where the image can be accessed
+        image_url = f"http://localhost:8000/uploads/{filename}"
+        return ImageUploadResponse(url=image_url)
+    except Exception as e:
+        logger.error(f"Error uploading image: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/chat")
-async def chat(request : ChatRequest):
+async def chat(request: ChatRequest):
     """
     Main chat endpoint that processes doctor's queries and returns appropriate responses
     """
-    
     try:
-        image_part = f". Image: {request.image}" if hasattr(request, 'image') and request.image else ""
+        image_part = f". Image: {request.image}" if request.image else ""
         output = call_secretary(request.message, image=request.image)
         print('Secretary', output)
         parsed_output = json.loads(output)

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { ToolSelector } from "./tool-selector"
 import { SourceCitation } from "./source-citation"
 import Image from "next/image"
+import { sendChatMessage, uploadImage } from "../services/api"
 
 interface Message {
   id: string
@@ -97,161 +98,59 @@ export default function ChatContainer() {
     e.preventDefault()
     if (!input.trim()) return
 
-    const newMessage: Message = {
+    const userMessage: Message = {
       id: Date.now().toString(),
       content: input,
       role: "user",
     }
 
-    setMessages((prev) => [...prev, newMessage])
+    setMessages((prev) => [...prev, userMessage])
     setInput("")
 
-    // TODO: Backend API Integration for Tool Selection
-    // 1. Call the tool selection API endpoint
-    //    POST /api/tool-selection
-    //    Body: {
-    //      query: string,          // User's input
-    //      context: Message[],     // Chat history for context
-    //      availableTools: Tool[], // List of all available tools
-    //    }
-    // 
-    // 2. API will:
-    //    - Use LLM to analyze medical context in query
-    //    - Match query intent with tool capabilities
-    //    - Consider tool ratings and verification status
-    //    - Return relevant tools with confidence scores
-    //
-    // 3. Expected API Response:
-    //    {
-    //      suggestedTools: Tool[],    // Ranked list of relevant tools
-    //      reasoning: string,         // Explanation of tool selection
-    //      confidence: number,        // Confidence in tool selection
-    //      alternativeTools: Tool[],  // Other potentially relevant tools
-    //      medicalContext: {          // Extracted medical context
-    //        condition: string,
-    //        symptoms: string[],
-    //        requiredAnalysis: string[]
-    //      }
-    //    }
-    //
-    // 4. Error Handling:
-    //    - Handle cases where no suitable tool is found
-    //    - Provide fallback options or recommendations
-    //    - Log unsuccessful matches for tool improvement
-    
-    setTimeout(() => {
-      let botResponse: Message
-      if (input.toLowerCase().includes("brain") || input.toLowerCase().includes("alzheimer")) {
-        // TODO: AI Agent Tool Selection
-        // In the real implementation, the AI agent will:
-        // 1. Analyze user query to determine relevant medical domain
-        // 2. Query available tools database for matching capabilities
-        // 3. Return appropriate tools with descriptions and requirements
-        // 4. Tools should be versioned and include metadata like:
-        //    - Model version
-        //    - Training dataset info
-        //    - Performance metrics
-        //    - Input requirements
-        botResponse = {
-          id: (Date.now() + 1).toString(),
-          content: "You can use these brain analysis tools:",
-          role: "assistant",
-          tools: [
-            {
-              name: "Brain MRI Analyzer",
-              description: "Advanced neural network for detecting brain abnormalities in MRI scans",
-              inputType: "image/*",
-              ratings: {
-                stars: 2847,
-                downloads: 15234,
-                accuracy: 0.94,
-                lastUpdate: "2024-02",
-                verified: true
-              }
-            },
-            {
-              name: "Cognitive Assessment Tool",
-              description: "Analyzes speech patterns and cognitive test responses for early detection",
-              inputType: "audio/*",
-              ratings: {
-                stars: 1523,
-                downloads: 8456,
-                accuracy: 0.89,
-                lastUpdate: "2024-01"
-              }
-            },
-          ],
-        }
-      } else if (input.toLowerCase().includes("lung") || input.toLowerCase().includes("pneumonia")) {
-        botResponse = {
-          id: (Date.now() + 1).toString(),
-          content: "You can use these lung analysis tools:",
-          role: "assistant",
-          tools: [
-            {
-              name: "Chest X-Ray Analyzer",
-              description: "Deep learning model for detecting pneumonia and other lung conditions",
-              inputType: "image/*",
-              ratings: {
-                stars: 3156,
-                downloads: 20145,
-                accuracy: 0.96,
-                lastUpdate: "2024-03",
-                verified: true
-              }
-            },
-            {
-              name: "Respiratory Pattern Analyzer",
-              description: "Analyzes breathing sounds for respiratory conditions",
-              inputType: "audio/*",
-              ratings: {
-                stars: 945,
-                downloads: 5234,
-                accuracy: 0.87,
-                lastUpdate: "2023-12"
-              }
-            },
-          ],
-        }
-      } else if (input.toLowerCase().includes("antibiotics")) {
-        if (sourceUrls.length === 0) {
-          botResponse = {
-            id: (Date.now() + 1).toString(),
-            content: "Please add some medical reference URLs in the side panel first. This will help me provide information from your trusted sources.",
-            role: "assistant",
-          }
-        } else {
-          // Example of how the real implementation would structure the data
-          const exampleFindings: { [key: string]: string } = {
-            "www.nhs.uk": "Antibiotics are used to treat bacterial infections. They don't work for viral infections like colds and flu. Common side effects include nausea, vomiting, and diarrhea.",
-            "www.medical-journal.com": "Antibiotics should be prescribed based on bacterial culture results.",
-            "www.health-research.org": "Common side effects include gastrointestinal disturbance.",
-            "www.clinical-guidelines.net": "Duration of treatment typically ranges from 7-14 days."
-          }
+    try {
+      // Call the backend API
+      const response = await sendChatMessage({
+        message: input,
+        image: previewUrl || undefined,
+      })
 
-          botResponse = {
-            id: (Date.now() + 1).toString(),
-            content: "Here's what I found about antibiotics from your trusted sources:",
-            role: "assistant",
-            sources: sourceUrls.map(url => {
-              const hostname = new URL(url.url).hostname
-              return {
-                title: "Antibiotic Guidelines and Usage",  // This would be extracted from the actual page title
-                url: url.url,
-                info: exampleFindings[hostname] || `Key findings about antibiotics would be extracted from ${url.description || hostname}`,
-              }
-            }),
-          }
-        }
-      } else {
-        botResponse = {
-          id: (Date.now() + 1).toString(),
-          content: "How can I assist you with your medical query? I can help analyze brain MRI scans, chest X-rays, and provide information from your trusted sources.",
-          role: "assistant",
-        }
+      // Create assistant message from response
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: response.response,
+        role: "assistant",
       }
-      setMessages((prev) => [...prev, botResponse])
-    }, 1000)
+
+      // If there's a suggested tool, add it to the message
+      if (response.suggested_tool === "brain_tumor") {
+        assistantMessage.tools = [{
+          name: "Brain MRI Analyzer",
+          description: "Advanced neural network for detecting brain abnormalities in MRI scans",
+          inputType: "image/*",
+          ratings: {
+            stars: 2847,
+            downloads: 15234,
+            accuracy: 0.94,
+            lastUpdate: "2024-02",
+            verified: true
+          }
+        }]
+      } else if (response.suggested_tool === "websearch") {
+        // Handle websearch case if needed
+        assistantMessage.content += "\n\nI'll search through your trusted sources for relevant information."
+      }
+
+      setMessages((prev) => [...prev, assistantMessage])
+    } catch (error) {
+      console.error('Error sending message:', error)
+      // Add error message to chat
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: "Sorry, there was an error processing your request. Please try again.",
+        role: "assistant",
+      }
+      setMessages((prev) => [...prev, errorMessage])
+    }
   }
 
   const handleFileUpload = async (file: File) => {
@@ -272,42 +171,43 @@ export default function ChatContainer() {
       // For image files, create and set preview
       if (fileType === 'image') {
         const reader = new FileReader()
-        reader.onload = (e) => {
-          setPreviewUrl(e.target?.result as string)
+        reader.onload = async (e) => {
+          const base64Image = e.target?.result as string
+          setPreviewUrl(base64Image)
+
+          try {
+            // First upload the image to get a URL
+            const imageUrl = await uploadImage(base64Image.split(',')[1])
+
+            // Add a success message to the chat
+            const uploadSuccessMessage: Message = {
+              id: Date.now().toString(),
+              content: `File uploaded successfully. Preparing to analyze with ${selectedTool?.name}...`,
+              role: "assistant",
+            }
+            setMessages(prev => [...prev, uploadSuccessMessage])
+
+            // Send the image URL to the chat endpoint
+            const response = await sendChatMessage({
+              message: "Analyze this brain scan",
+              image: imageUrl,
+            })
+
+            // Add the analysis result to messages
+            const botResponse: Message = {
+              id: Date.now().toString(),
+              content: response.response,
+              role: "assistant",
+            }
+            
+            setMessages(prev => [...prev, botResponse])
+          } catch (error) {
+            console.error('Analysis error:', error)
+            setUploadError('Failed to analyze the image')
+          }
         }
         reader.readAsDataURL(file)
       }
-
-      // Add a success message to the chat
-      const uploadSuccessMessage: Message = {
-        id: Date.now().toString(),
-        content: `File uploaded successfully. Preparing to analyze with ${selectedTool?.name}...`,
-        role: "assistant",
-      }
-      setMessages(prev => [...prev, uploadSuccessMessage])
-
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 2000))
-
-      // Simulate API response based on selected tool
-      let mockResult = {
-        prediction: "Analysis not available for this tool"
-      }
-
-      if (selectedTool?.name === "Brain MRI Analyzer") {
-        mockResult.prediction = "No significant abnormalities detected. Confidence score: 92%"
-      } else if (selectedTool?.name === "Chest X-Ray Analyzer") {
-        mockResult.prediction = "Mild signs of pneumonia detected in lower right lobe. Confidence score: 89%"
-      }
-      
-      // Add the analysis result to messages
-      const botResponse: Message = {
-        id: Date.now().toString(),
-        content: `Analysis complete: ${mockResult.prediction}`,
-        role: "assistant",
-      }
-      
-      setMessages(prev => [...prev, botResponse])
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : 'Upload failed')
       console.error('Upload error:', error)
@@ -376,13 +276,47 @@ export default function ChatContainer() {
     }
   }
 
-  // TODO: Implement tool execution
-  // This function will be called when the "Run Analysis" button is clicked
-  const handleRunAnalysis = () => {
-    if (selectedTool) {
-      // Implement the logic to run the selected tool
-      console.log("Running analysis with tool:", selectedTool.name)
-      // You'll need to send a request to your backend to execute the tool
+  const handleRunAnalysis = async () => {
+    if (selectedTool && previewUrl) {
+      try {
+        // Add a loading message
+        const loadingMessage: Message = {
+          id: Date.now().toString(),
+          content: `Starting analysis with ${selectedTool.name}...`,
+          role: "assistant",
+        }
+        setMessages(prev => [...prev, loadingMessage])
+
+        // Send the image URL to the chat endpoint
+        const response = await sendChatMessage({
+          message: "Analyze this brain scan",
+          image: previewUrl,
+        })
+
+        // Add the analysis result to messages
+        const botResponse: Message = {
+          id: Date.now().toString(),
+          content: response.response,
+          role: "assistant",
+        }
+        
+        setMessages(prev => [...prev, botResponse])
+
+        // Clear the tool selection and preview after analysis
+        setSelectedTool(null)
+        setPreviewUrl(null)
+        if (fileInputRef.current) {
+          fileInputRef.current.value = ''
+        }
+      } catch (error) {
+        console.error('Analysis error:', error)
+        const errorMessage: Message = {
+          id: Date.now().toString(),
+          content: "Sorry, there was an error analyzing the image. Please try again.",
+          role: "assistant",
+        }
+        setMessages(prev => [...prev, errorMessage])
+      }
     }
   }
 
