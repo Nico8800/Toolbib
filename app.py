@@ -82,6 +82,7 @@ PROMPT_SYSTEM = """
     "response": "string",
     "suggested_tool": "string" (one of provided tool or None),
     "trigger_agent" : bool,
+    "sources" : list of strings (urls used by agent)
     }
     Rules:
 1. Your response must be parseable as JSON
@@ -97,6 +98,7 @@ Answer :
     "response": "For sure! Do you have any data to provide ? You can use this suggested tool:",
     "suggested_tool": "brain_tumor",
     "trigger_agent" : False,
+    "sources": []
 }
 
 User request : "I want to check prohibited antibiotic for pregnant women"
@@ -104,7 +106,8 @@ Answer :
 {
     "response": "I'll search on the internet.",
     "suggested_tool": "websearch",
-    "trigger_agent" : True
+    "trigger_agent" : True,
+    "sources" : ["https://vidal.com/useful-page",]
 }
 
 DON'T FORGET TO ANSWER ONLY IN THIS JSON FORMAT.
@@ -180,30 +183,15 @@ agent = CodeAgent(
     model=model,
 )
 
-@app.post("/upload")
-async def upload_image(image_data: dict):
+
+def get_image_from_path(file_path):
     try:
-        # Get base64 image data
-        base64_image = image_data.get("image")
-        if not base64_image:
-            raise HTTPException(status_code=400, detail="No image data provided")
-
-        # Generate unique filename
-        file_extension = "jpg"  # You can add logic to determine the correct extension
-        filename = f"{uuid.uuid4()}.{file_extension}"
-        file_path = UPLOAD_DIR / filename
-
-        # Decode and save the image
-        image_bytes = base64.b64decode(base64_image)
-        with open(file_path, "wb") as f:
-            f.write(image_bytes)
-
-        # Return the URL where the image can be accessed
-        image_url = f"http://localhost:8000/uploads/{filename}"
-        return ImageUploadResponse(url=image_url)
+        image = Image.open(file_path)
+        return image
+        
     except Exception as e:
-        logger.error(f"Error uploading image: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error reading image: {e}")
+        return None
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
@@ -217,22 +205,26 @@ async def chat(request: ChatRequest):
 
         # Handle image if provided
         temp_image_path = None
+        
         if request.image:
             try:
-                # Extract base64 data (remove data:image/jpeg;base64, prefix if present)
-                image_data = request.image
-                if ',' in image_data:
-                    image_data = image_data.split(',')[1]
-                
-                # Decode base64 to bytes
-                image_bytes = base64.b64decode(image_data)
-                
-                # Create a temporary file
-                temp_image_path = UPLOAD_DIR / f"temp_{uuid.uuid4()}.jpg"
-                with open(temp_image_path, "wb") as f:
-                    f.write(image_bytes)
-                
-                print(f'Created temporary image at: {temp_image_path}')
+                if Path(request.image).exists():  # It's a file path
+                    temp_image_path = Path(request.image)
+                else:
+                    # Extract base64 data (remove data:image/jpeg;base64, prefix if present)
+                    image_data = request.image
+                    if ',' in image_data:
+                        image_data = image_data.split(',')[1]
+                    
+                    # Decode base64 to bytes
+                    image_bytes = base64.b64decode(image_data)
+                    
+                    # Create a temporary file
+                    temp_image_path = UPLOAD_DIR / f"temp_{uuid.uuid4()}.jpg"
+                    with open(temp_image_path, "wb") as f:
+                        f.write(image_bytes)
+                    
+                    print(f'Created temporary image at: {temp_image_path}')
             except Exception as e:
                 logger.error(f"Error processing image: {str(e)}")
                 if temp_image_path and temp_image_path.exists():
@@ -259,9 +251,6 @@ async def chat(request: ChatRequest):
         
         if parsed_output['trigger_agent']:
             print('Agent running')
-            # If we have an image and it's a brain tumor analysis
-                # Run agent with full context for non-image queries
-            print('Agent running')
             response = agent.run(
                 task=f"""
                 You are the AI agent. Your secretary just answered this to the doctor: {output}.
@@ -270,6 +259,7 @@ async def chat(request: ChatRequest):
                 Image: {str(temp_image_path) if temp_image_path else 'No image provided'}
                 If you use web search, you must explicitely give the links you found.
                 Interpret the results considering the full conversation context.
+                If you are using websearch, PLEASE CITE YOUR SOURCES !!!
                 """,
             )
             
