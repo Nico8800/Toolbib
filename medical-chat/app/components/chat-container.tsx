@@ -11,6 +11,7 @@ import { ToolSelector } from "./tool-selector"
 import { SourceCitation } from "./source-citation"
 import Image from "next/image"
 import { sendChatMessage, uploadImage } from "../services/api"
+import { MarkdownContent } from "./markdown-content"
 
 interface Message {
   id: string
@@ -192,7 +193,8 @@ export default function ChatContainer() {
       const response = await sendChatMessage({
         message: input,
         image: previewUrl || undefined,
-        conversation_id: conversationId
+        conversation_id: conversationId,
+        preferred_links: sourceUrls.map(source => source.url)
       })
 
       // Store the conversation ID for future messages
@@ -224,8 +226,15 @@ export default function ChatContainer() {
             verified: true
           }
         }]
-      } else if (response.suggested_tool === "websearch") {
-        assistantMessage.content += "\n\nI'll search through your trusted sources for relevant information."
+      }
+
+      // Add sources if they exist in the response
+      if (response.sources && response.sources.length > 0) {
+        assistantMessage.sources = response.sources.map(url => ({
+          title: new URL(url).hostname,
+          url: url,
+          info: "Referenced source"
+        }))
       }
 
       setMessages((prev) => [...prev, assistantMessage])
@@ -418,7 +427,8 @@ export default function ChatContainer() {
       const response = await sendChatMessage({
         message: `Please analyze this image using the brain_tumor tool`,
         image: previewUrl,  // This is now the base64 data
-        conversation_id: conversationId
+        conversation_id: conversationId,
+        preferred_links: sourceUrls.map(source => source.url)
       })
       console.log('✅ Received analysis response:', response);
 
@@ -586,7 +596,13 @@ export default function ChatContainer() {
                         {message.role === "user" ? "You" : "Assistant"}
                       </span>
                     </div>
-                    <p className="text-[15px] leading-relaxed">{message.content}</p>
+                    <div className={message.role === "user" ? "text-[15px] leading-relaxed" : ""}>
+                      {message.role === "user" ? (
+                        <p>{message.content}</p>
+                      ) : (
+                        <MarkdownContent content={message.content} />
+                      )}
+                    </div>
                     {message.isThinking && message.thinkingSteps && message.thinkingSteps.length > 0 && (
                       <div className="mt-3 space-y-2">
                         {message.thinkingSteps.map((step, index) => (

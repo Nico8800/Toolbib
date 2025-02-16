@@ -15,6 +15,7 @@ export interface ChatRequest {
   message: string;
   image?: string;
   conversation_id?: string;
+  preferred_links?: string[];
 }
 
 export interface ChatResponse {
@@ -22,6 +23,7 @@ export interface ChatResponse {
   suggested_tool?: string;
   trigger_agent: boolean;
   conversation_id: string;
+  sources?: string[];
 }
 
 export interface ImageUploadResponse {
@@ -54,12 +56,14 @@ export const uploadImage = async (base64Image: string): Promise<string> => {
 export const sendChatMessage = async (request: ChatRequest): Promise<ChatResponse> => {
   console.log('🚀 Starting chat message request...', {
     message: request.message,
-    image: request.image || 'no image provided'
+    image: request.image || 'no image provided',
+    preferred_links: request.preferred_links || 'no preferred links'
   });
   try {
     console.log('📤 Sending request to /chat endpoint with payload:', {
       message: request.message,
-      image: request.image
+      image: request.image,
+      preferred_links: request.preferred_links
     });
     const response = await api.post<ChatResponse>('/chat', request);
     console.log('✅ Chat response received:', response.data);
