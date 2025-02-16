@@ -317,7 +317,7 @@ async def chat(request: ChatRequest):
             if parsed_output['suggested_tool'] == 'websearch':
                 final = json.loads(
                     call_secretary(
-                        request=f"The AI agent just answered this. Inform the doctor: {response} and explicitly give the links the agent used as sources.Please mention again 'suggested_tool'='web_search'",
+                        request=f"The AI agent just answered this. Inform the doctor: {response} and explicitly give the links the agent used as sources.Please mention again suggested_tool'='web_search'",
                         conversation_history=history
                     )
                 )
