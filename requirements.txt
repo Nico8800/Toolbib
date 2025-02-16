@@ -4,3 +4,6 @@ smolagents[litellm]
 python-multipart
 gradio_client
 mistralai
+Pillow
+requests
+python-dotenv

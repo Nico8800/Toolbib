@@ -13,6 +13,9 @@ from fastapi.staticfiles import StaticFiles
 import base64
 from pathlib import Path
 import uuid
+import requests
+from PIL import Image
+from io import BytesIO
 load_dotenv()
 
 # Configure logging
@@ -167,14 +170,7 @@ def call_secretary(request: str, image: str = None, conversation_history: list =
     # Parse the response
     response_content = chat_response.choices[0].message.content
     response_json = json.loads(response_content)
-    
-    # If the message mentions brain_tumor tool and an image is provided, force trigger the agent
-    if image and ("brain_tumor" in request.lower() or response_json.get("suggested_tool") == "brain_tumor"):
-        response_json["trigger_agent"] = True
-        response_json["suggested_tool"] = "brain_tumor"
-        if not "analyze" in response_json["response"].lower():
-            response_json["response"] = "I'll analyze this image for brain tumors right away."
-    
+       
     return json.dumps(response_json)
 
 agent = CodeAgent(
@@ -215,7 +211,32 @@ async def chat(request: ChatRequest):
     try:
         # Get or create conversation history
         conversation_id, history = get_or_create_conversation(request.conversation_id)
-        
+        print('Request', request)
+
+        # Handle image if provided
+        temp_image_path = None
+        if request.image:
+            try:
+                # Extract base64 data (remove data:image/jpeg;base64, prefix if present)
+                image_data = request.image
+                if ',' in image_data:
+                    image_data = image_data.split(',')[1]
+                
+                # Decode base64 to bytes
+                image_bytes = base64.b64decode(image_data)
+                
+                # Create a temporary file
+                temp_image_path = UPLOAD_DIR / f"temp_{uuid.uuid4()}.jpg"
+                with open(temp_image_path, "wb") as f:
+                    f.write(image_bytes)
+                
+                print(f'Created temporary image at: {temp_image_path}')
+            except Exception as e:
+                logger.error(f"Error processing image: {str(e)}")
+                if temp_image_path and temp_image_path.exists():
+                    temp_image_path.unlink()
+                raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
+
         # Add user message to history
         history.append({
             "role": "user",
@@ -223,10 +244,11 @@ async def chat(request: ChatRequest):
         })
         
         # Get secretary response with history
-        output = call_secretary(request.message, image=request.image, conversation_history=history)
+        output = call_secretary(request.message, image=str(temp_image_path) if temp_image_path else None, conversation_history=history)
         print('Secretary', output)
         parsed_output = json.loads(output)
-        
+        print('Parsed output', parsed_output)
+
         # Add secretary response to history
         history.append({
             "role": "assistant",
@@ -234,17 +256,21 @@ async def chat(request: ChatRequest):
         })
         
         if parsed_output['trigger_agent']:
-            # Run agent with full context
+            print('Agent running')
+            # If we have an image and it's a brain tumor analysis
+                # Run agent with full context for non-image queries
+            print('Agent running')
             response = agent.run(
                 task=f"""
                 You are the AI agent. Your secretary just answered this to the doctor: {output}.
                 The doctor wants: {request.message}
                 Previous conversation context: {json.dumps(history)}
-                Image: {request.image if request.image else 'No image provided'}
+                Image: {str(temp_image_path) if temp_image_path else 'No image provided'}
                 Interpret the results considering the full conversation context.
                 """,
             )
             
+            print('Agent response', response)
             # Get final secretary response
             final = json.loads(
                 call_secretary(
@@ -252,19 +278,31 @@ async def chat(request: ChatRequest):
                     conversation_history=history
                 )
             )
-            
+            print('Final response', final)
             # Add final response to history
             history.append({
                 "role": "assistant",
                 "content": final["response"]
             })
             
+            # Clean up temporary file
+            if temp_image_path and temp_image_path.exists():
+                temp_image_path.unlink()
+            
             # Return response with conversation ID
             return {**final, "conversation_id": conversation_id}
         else:
+            # Clean up temporary file if not used
+            if temp_image_path and temp_image_path.exists():
+                temp_image_path.unlink()
+            
             # Return response with conversation ID
             return {**parsed_output, "conversation_id": conversation_id}
     except Exception as e:
+        # Clean up temporary file in case of error
+        if temp_image_path and temp_image_path.exists():
+            temp_image_path.unlink()
+        logger.error(f"Chat error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

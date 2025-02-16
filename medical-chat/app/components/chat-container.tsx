@@ -268,11 +268,6 @@ export default function ChatContainer() {
           setPreviewUrl(base64Image)
 
           try {
-            // First upload the image to get a URL
-            const imageUrl = await uploadImage(base64Image.split(',')[1])
-            console.log('📸 Image uploaded and mounted at:', imageUrl);
-            setPreviewUrl(imageUrl) // Store the mounted URL instead of base64
-
             // Add a success message to the chat
             const uploadSuccessMessage: Message = {
               id: Date.now().toString(),
@@ -418,11 +413,11 @@ export default function ChatContainer() {
         })
       }
 
-      // Send the image URL to the chat endpoint with conversation ID
-      console.log('📤 Sending analysis request to backend with image URL:', previewUrl);
+      // Send the base64 image data directly to the chat endpoint
+      console.log('📤 Sending analysis request with image data');
       const response = await sendChatMessage({
         message: `Please analyze this image using the brain_tumor tool`,
-        image: previewUrl,
+        image: previewUrl,  // This is now the base64 data
         conversation_id: conversationId
       })
       console.log('✅ Received analysis response:', response);
