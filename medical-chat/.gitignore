@@ -47,7 +47,6 @@ dist/
 *DS_Store* 
 *.jpeg
 *.jpg
-*.png
 *.gif
 *.bmp
 *.tiff
