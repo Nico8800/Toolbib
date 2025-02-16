@@ -112,6 +112,8 @@ DON'T FORGET TO ANSWER ONLY IN THIS JSON FORMAT.
 USER_PROMPT :
 """
 
+
+
 class ChatRequest(BaseModel):
     message: str
     image: Optional[str] = None
@@ -266,18 +268,28 @@ async def chat(request: ChatRequest):
                 The doctor wants: {request.message}
                 Previous conversation context: {json.dumps(history)}
                 Image: {str(temp_image_path) if temp_image_path else 'No image provided'}
+                If you use web search, you must explicitely give the links you found.
                 Interpret the results considering the full conversation context.
                 """,
             )
             
             print('Agent response', response)
             # Get final secretary response
-            final = json.loads(
-                call_secretary(
-                    request=f"{PROMPT_SYSTEM}The AI agent just answered this. Inform the doctor: {response}",
-                    conversation_history=history
+
+            if parsed_output['suggested_tool'] == 'websearch':
+                final = json.loads(
+                    call_secretary(
+                        request=f"The AI agent just answered this. Inform the doctor: {response} and explicitly give the links the agent used as sources.",
+                        conversation_history=history
+                    )
                 )
-            )
+            else:
+                final = json.loads(
+                    call_secretary(
+                        request=f"{PROMPT_SYSTEM}The AI agent just answered this. Inform the doctor: {response}",
+                        conversation_history=history
+                    )
+                )
             print('Final response', final)
             # Add final response to history
             history.append({
