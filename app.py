@@ -1,8 +1,8 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
-from typing import Optional, Literal
+from typing import Optional, Literal, List
 import uvicorn
-from smolagents import Tool, CodeAgent, LiteLLMModel, DuckDuckGoSearchTool
+from smolagents import Tool, CodeAgent, LiteLLMModel #, DuckDuckGoSearchTool
 import logging
 from mistralai import Mistral
 import os
@@ -121,6 +121,7 @@ class ChatRequest(BaseModel):
     message: str
     image: Optional[str] = None
     conversation_id: Optional[str] = None
+    preferred_links : List[str] = None
 
 class ImageUploadResponse(BaseModel):
     url: str
@@ -178,9 +179,55 @@ def call_secretary(request: str, image: str = None, conversation_history: list =
        
     return json.dumps(response_json)
 
+class DuckDuckGoSearchTool(Tool):
+    name = "web_search"
+    description = (
+        "Performs a DuckDuckGo web search based on your query and returns the top search results. "
+        "Optionally, if the external user provides an array of website domains, the search will be "
+        "restricted to (or prioritize) those sites."
+    )
+    inputs = {
+        "query": {"type": "string", "description": "The search query to perform."},
+        "prioritize_websites": {
+            "type": "array",  # Use 'array' as the authorized type.
+            "description": "Optionally, an array of website domains to restrict the search. "
+                           "Only used if provided by the external user.",
+            "nullable": True,
+        },
+    }
+    output_type = "string"
+
+    def __init__(self, max_results: int = 10, **kwargs):
+        super().__init__()
+        self.max_results = max_results
+        try:
+            from duckduckgo_search import DDGS
+        except ImportError as e:
+            raise ImportError(
+                "You must install package `duckduckgo_search` to run this tool: "
+                "for instance run `pip install duckduckgo-search`."
+            ) from e
+        self.ddgs = DDGS(**kwargs)
+
+    def forward(self, query: str, prioritize_websites: Optional[List[str]] = None) -> str:
+        # Only modify the query if the external user provides a non-empty list.
+        if prioritize_websites:
+            sites_str = " OR ".join([f"site:{site}" for site in prioritize_websites])
+            query = f"{query} ({sites_str})"
+        
+        results = self.ddgs.text(query, max_results=self.max_results)
+        if len(results) == 0:
+            raise Exception("No results found! Try a less restrictive/shorter query.")
+
+        postprocessed_results = [
+            f"[{result['title']}]({result['href']})\n{result['body']}" for result in results
+        ]
+        return "## Search Results\n\n" + "\n\n".join(postprocessed_results)
+
 agent = CodeAgent(
-    tools=[brain_tumor, DuckDuckGoSearchTool()],
+    tools=[brain_tumor, DuckDuckGoSearchTool(max_results=5)],
     model=model,
+    # max_steps=3
 )
 
 
@@ -199,7 +246,7 @@ async def chat(request: ChatRequest):
     Main chat endpoint that processes doctor's queries and returns appropriate responses
     """
     try:
-        # Get or create conversation history
+            # Get or create conversation history
         conversation_id, history = get_or_create_conversation(request.conversation_id)
         print('Request', request)
 
@@ -255,6 +302,7 @@ async def chat(request: ChatRequest):
                 task=f"""
                 You are the AI agent. Your secretary just answered this to the doctor: {output}.
                 The doctor wants: {request.message}
+                Preferred sources : {request.preferred_links}
                 Previous conversation context: {json.dumps(history)}
                 Image: {str(temp_image_path) if temp_image_path else 'No image provided'}
                 If you use web search, you must explicitely give the links you found.
