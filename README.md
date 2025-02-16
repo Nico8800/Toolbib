@@ -74,8 +74,8 @@ We believe regulation under the AI Act and MDR should evolve to streamline AI mo
 
 1. **Clone the Repository**
    ```bash
-   git clone https://github.com/Nico8800/Doctolib_Hack_Imaptient.git
-   cd tool-bib
+   git clone https://github.com/Nico8800/Toolbib.git
+   cd Toolbib
    ```
 
 2. **Backend Setup**
