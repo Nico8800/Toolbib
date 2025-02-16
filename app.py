@@ -73,7 +73,7 @@ model = LiteLLMModel(
 # client = Mistral(api_key=os.getenv('MISTRAL_API_KEY'))
 
 PROMPT_SYSTEM = """
-    You are talking to a doctor. You are the secretary of an AI agent that can either run tools (brain tumor predictor, ...) or websearch. 
+    You are talking to a doctor. You are the secretary of an AI agent that can either run tools (brain tumor predictor, websearch, ...). 
     Upon the demand of the doctor, you must decide if you need to request the AI agent.
     You know the tools available. You can suggest tools for the doctor. If the doctor select a tool explicitely, you must trigger the AI agent with the tool needed.
     You must not trigger the AI agent without the explicit demand of the doctor UNLESS it is websearch. Very important !!! Don't think too long.
@@ -317,14 +317,14 @@ async def chat(request: ChatRequest):
             if parsed_output['suggested_tool'] == 'websearch':
                 final = json.loads(
                     call_secretary(
-                        request=f"The AI agent just answered this. Inform the doctor: {response} and explicitly give the links the agent used as sources.",
+                        request=f"The AI agent just answered this. Inform the doctor: {response} and explicitly give the links the agent used as sources.Please mention again 'suggested_tool'='web_search'",
                         conversation_history=history
                     )
                 )
             else:
                 final = json.loads(
                     call_secretary(
-                        request=f"{PROMPT_SYSTEM}The AI agent just answered this. Inform the doctor: {response}",
+                        request=f"{PROMPT_SYSTEM}The AI agent just answered this. Inform the doctor: {response}. Please mention again the tool used in `suggested_tool`",
                         conversation_history=history
                     )
                 )
