@@ -6,7 +6,6 @@
 uploads/
 *.jpg
 *.jpeg
-*.png
 *.gif
 *.svg
 *.mp3

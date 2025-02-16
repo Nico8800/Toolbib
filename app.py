@@ -35,7 +35,12 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Add your frontend URL
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001"
+    ],  # Add your frontend URLs
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -107,31 +112,70 @@ USER_PROMPT :
 class ChatRequest(BaseModel):
     message: str
     image: Optional[str] = None
+    conversation_id: Optional[str] = None
 
 class ImageUploadResponse(BaseModel):
     url: str
 
 secretary = Mistral(api_key=os.getenv("MISTRAL_API_KEY"))
 
-def call_secretary(request:str, image:str = None):
-    image_part = f". Image: {image}" if image else ""
-    user_input = f"{PROMPT_SYSTEM}{request}{image_part}"
-    print(user_input)
-    chat_response = secretary.chat.complete(
-    model = MODEL_NAME,
-    messages = [
-            {
-                "role": "user",
-                "content": user_input,
-            },
-        ],
-    response_format={
-        "type" : "json_object",
-    }
-    
-    )
-    return chat_response.choices[0].message.content
+# Store conversations in memory (in production, use a proper database)
+conversations = {}
 
+def get_or_create_conversation(conversation_id: Optional[str] = None) -> tuple[str, list]:
+    if not conversation_id:
+        conversation_id = str(uuid.uuid4())
+    if conversation_id not in conversations:
+        conversations[conversation_id] = []
+    return conversation_id, conversations[conversation_id]
+
+def call_secretary(request: str, image: str = None, conversation_history: list = None):
+    # Add image context to the system prompt if an image is provided
+    modified_prompt = PROMPT_SYSTEM
+    if image:
+        modified_prompt = PROMPT_SYSTEM.replace(
+            "You are talking to a doctor.",
+            "You are talking to a doctor. The doctor has provided an image for analysis."
+        )
+    
+    image_part = f". Image URL: {image}" if image else ""
+    user_input = f"{modified_prompt}{request}{image_part}"
+    
+    # Prepare messages with conversation history
+    messages = []
+    if conversation_history:
+        for msg in conversation_history:
+            messages.append({
+                "role": msg["role"],
+                "content": msg["content"]
+            })
+    
+    # Add the current user message
+    messages.append({
+        "role": "user",
+        "content": user_input,
+    })
+    
+    chat_response = secretary.chat.complete(
+        model=MODEL_NAME,
+        messages=messages,
+        response_format={
+            "type": "json_object",
+        }
+    )
+    
+    # Parse the response
+    response_content = chat_response.choices[0].message.content
+    response_json = json.loads(response_content)
+    
+    # If the message mentions brain_tumor tool and an image is provided, force trigger the agent
+    if image and ("brain_tumor" in request.lower() or response_json.get("suggested_tool") == "brain_tumor"):
+        response_json["trigger_agent"] = True
+        response_json["suggested_tool"] = "brain_tumor"
+        if not "analyze" in response_json["response"].lower():
+            response_json["response"] = "I'll analyze this image for brain tumors right away."
+    
+    return json.dumps(response_json)
 
 agent = CodeAgent(
     tools=[brain_tumor, DuckDuckGoSearchTool()],
@@ -169,22 +213,57 @@ async def chat(request: ChatRequest):
     Main chat endpoint that processes doctor's queries and returns appropriate responses
     """
     try:
-        image_part = f". Image: {request.image}" if request.image else ""
-        output = call_secretary(request.message, image=request.image)
+        # Get or create conversation history
+        conversation_id, history = get_or_create_conversation(request.conversation_id)
+        
+        # Add user message to history
+        history.append({
+            "role": "user",
+            "content": request.message
+        })
+        
+        # Get secretary response with history
+        output = call_secretary(request.message, image=request.image, conversation_history=history)
         print('Secretary', output)
         parsed_output = json.loads(output)
+        
+        # Add secretary response to history
+        history.append({
+            "role": "assistant",
+            "content": parsed_output["response"]
+        })
+        
         if parsed_output['trigger_agent']:
+            # Run agent with full context
             response = agent.run(
                 task=f"""
-            You are the AI agent. Your secretary just answered this to the doctor : {output}.
-            The doctor wants : {request.message}{image_part} Interpret the results. """,
+                You are the AI agent. Your secretary just answered this to the doctor: {output}.
+                The doctor wants: {request.message}
+                Previous conversation context: {json.dumps(history)}
+                Image: {request.image if request.image else 'No image provided'}
+                Interpret the results considering the full conversation context.
+                """,
             )
+            
+            # Get final secretary response
             final = json.loads(
-                call_secretary(request = f"{PROMPT_SYSTEM}The AI agent just answered this. Inform the doctor: {response}")
+                call_secretary(
+                    request=f"{PROMPT_SYSTEM}The AI agent just answered this. Inform the doctor: {response}",
+                    conversation_history=history
+                )
             )
-            return final
-        else:   
-            return parsed_output 
+            
+            # Add final response to history
+            history.append({
+                "role": "assistant",
+                "content": final["response"]
+            })
+            
+            # Return response with conversation ID
+            return {**final, "conversation_id": conversation_id}
+        else:
+            # Return response with conversation ID
+            return {**parsed_output, "conversation_id": conversation_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -88,6 +88,7 @@ export default function ChatContainer() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [thinkingSteps, setThinkingSteps] = useState<string[]>([])
   const [isThinking, setIsThinking] = useState(false)
+  const [conversationId, setConversationId] = useState<string | undefined>(undefined)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [sourceUrls, setSourceUrls] = useState<SourceUrl[]>([
@@ -187,11 +188,17 @@ export default function ChatContainer() {
         })
       }
 
-      // Call the backend API
+      // Call the backend API with conversation ID
       const response = await sendChatMessage({
         message: input,
         image: previewUrl || undefined,
+        conversation_id: conversationId
       })
+
+      // Store the conversation ID for future messages
+      if (response.conversation_id) {
+        setConversationId(response.conversation_id)
+      }
 
       // Remove thinking message and add final response
       setMessages(prev => prev.filter(msg => !msg.isThinking))
@@ -411,13 +418,19 @@ export default function ChatContainer() {
         })
       }
 
-      // Send the image URL to the chat endpoint
+      // Send the image URL to the chat endpoint with conversation ID
       console.log('📤 Sending analysis request to backend with image URL:', previewUrl);
       const response = await sendChatMessage({
-        message: "Trigger the agent",
+        message: `Please analyze this image using the brain_tumor tool`,
         image: previewUrl,
+        conversation_id: conversationId
       })
       console.log('✅ Received analysis response:', response);
+
+      // Store the conversation ID if it's new
+      if (response.conversation_id) {
+        setConversationId(response.conversation_id)
+      }
 
       // Remove thinking message
       setMessages(prev => prev.filter(msg => !msg.isThinking))

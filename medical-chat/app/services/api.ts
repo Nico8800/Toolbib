@@ -14,12 +14,14 @@ const api = axios.create({
 export interface ChatRequest {
   message: string;
   image?: string;
+  conversation_id?: string;
 }
 
 export interface ChatResponse {
   response: string;
   suggested_tool?: string;
   trigger_agent: boolean;
+  conversation_id: string;
 }
 
 export interface ImageUploadResponse {
